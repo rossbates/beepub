@@ -12,10 +12,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
     volumes:
-      - app_data:/data/app
-      - books_data:/data/books
-      - covers_data:/data/covers
-      - illustrations_data:/data/illustrations
+      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
+      - ${BEEPUB_BOOKS_PATH:-books_data}:/data/books
+      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers
+      - ${BEEPUB_ILLUSTRATIONS_PATH:-illustrations_data}:/data/illustrations
       # To import an existing Calibre library, mount it read-only here and
       # in the worker service below, then use Admin -> Calibre in the app:
       # - /path/to/calibre:/calibre:ro
@@ -36,10 +36,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
     volumes:
-      - app_data:/data/app
-      - books_data:/data/books
-      - covers_data:/data/covers
-      - illustrations_data:/data/illustrations
+      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
+      - ${BEEPUB_BOOKS_PATH:-books_data}:/data/books
+      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers
+      - ${BEEPUB_ILLUSTRATIONS_PATH:-illustrations_data}:/data/illustrations
       # Calibre mount, same as the backend service:
       # - /path/to/calibre:/calibre:ro
     depends_on:
@@ -67,7 +67,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
     volumes:
-      - app_data:/data/app
+      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -85,7 +85,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}
     volumes:
       # migrate runs first, so it generates the auto SECRET_KEY when unset
-      - app_data:/data/app
+      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,7 +111,7 @@ services:
       # password is acceptable; set POSTGRES_PASSWORD to override.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beepub}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${BEEPUB_POSTGRES_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-beepub}"]
       interval: 5s
@@ -122,7 +122,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - ${BEEPUB_REDIS_DATA_PATH:-redis_data}:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -137,7 +137,7 @@ services:
     ports:
       - "${PORT:-80}:80"
     volumes:
-      - covers_data:/data/covers:ro
+      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers:ro
     depends_on:
       - backend
       - frontend
