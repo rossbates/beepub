@@ -131,24 +131,40 @@ Highlight.prototype.filteredRanges = function () {
   return nonEmpty.filter((_r, idx) => !discard.has(idx));
 };
 
+function nearestScrolledAncestor(el) {
+  let node = el?.parentElement;
+  while (node) {
+    if (node.scrollLeft || node.scrollTop) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function markRectXY(mark, rect) {
   const svg = mark.element?.ownerSVGElement;
   const frame = mark.range?.startContainer?.ownerDocument?.defaultView?.frameElement;
   if (svg && frame) {
     const svgRect = svg.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
+    const scroller = nearestScrolledAncestor(mark.container);
+    // Range rects are viewport-relative inside the iframe. The SVG pane lives
+    // in the scrolling view wrapper, so local SVG coordinates need the outer
+    // reader scroll offset added back in. Without this, marks render one page
+    // too high after a display()/sidebar jump.
     return {
-      x: rect.left + frameRect.left - svgRect.left,
-      y: rect.top + frameRect.top - svgRect.top,
+      x: rect.left + frameRect.left - svgRect.left + (scroller?.scrollLeft ?? 0),
+      y: rect.top + frameRect.top - svgRect.top + (scroller?.scrollTop ?? 0),
     };
   }
 
-  // Fallback to marks-pane's original coordinate strategy.
+  // Fallback to marks-pane's original coordinate strategy, plus the same
+  // scroll offset correction for paginated/scrolling managers.
   const offset = mark.element.getBoundingClientRect();
   const container = mark.container.getBoundingClientRect();
+  const scroller = nearestScrolledAncestor(mark.container);
   return {
-    x: rect.left - offset.left + container.left,
-    y: rect.top - offset.top + container.top,
+    x: rect.left - offset.left + container.left + (scroller?.scrollLeft ?? 0),
+    y: rect.top - offset.top + container.top + (scroller?.scrollTop ?? 0),
   };
 }
 
