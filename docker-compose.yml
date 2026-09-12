@@ -134,8 +134,8 @@ services:
     build: ./nginx
     pull_policy: missing
     restart: unless-stopped
-    ports:
-      - "${PORT:-80}:80"
+    expose:
+      - "80"
     volumes:
       - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers:ro
     depends_on:
