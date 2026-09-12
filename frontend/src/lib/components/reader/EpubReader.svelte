@@ -301,6 +301,18 @@
     if (!head || !start.startsWith("/")) return cfi;
     return `epubcfi(${head}${start})`;
   }
+
+  function displayWithTimeout(target?: string, timeoutMs = 2500): Promise<void> {
+    const display = target
+      ? rendition.display(displayTargetFromCfi(target))
+      : rendition.display();
+    return Promise.race([
+      Promise.resolve(display).then(() => undefined),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error("EPUB display timed out")), timeoutMs),
+      ),
+    ]);
+  }
   let restoringProgress = false;
 
   // Position bridged from an e-reader (kosync), newer than the stored CFI.
@@ -1386,7 +1398,7 @@
           );
         }
 
-        await rendition.display(savedProgress.cfi);
+        await displayWithTimeout(savedProgress.cfi);
 
         // Page-based scroll correction: CFI-based restore loses character offset precision
         // causing off-by-one page errors. After display resolves (manager now exists),
