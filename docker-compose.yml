@@ -98,8 +98,11 @@ services:
 
 
   frontend:
-    image: ghcr.io/oalieno/beepub-frontend:${BEEPUB_VERSION:-0.13.0}
-    pull_policy: missing
+    # Test branch: build the frontend from this repo so reader changes are used.
+    # Main keeps the upstream prebuilt image for the stable Dokploy deploy.
+    image: beepub-frontend:ross-cfi-test
+    build: ./frontend
+    pull_policy: build
     restart: unless-stopped
 
     environment:
