@@ -1760,7 +1760,7 @@
   function applyAllHighlights() {
     if (!rendition) return;
     for (const h of highlights) {
-      addHighlightAnnotation(h.cfi_range, h.color);
+      addHighlightAnnotation(h.cfi_range, h.color, h.text);
     }
   }
 
@@ -1783,7 +1783,7 @@
         removeHighlightAnnotation(heal.oldCfi);
         h.cfi_range = heal.cfi;
         h.section_index = heal.sectionIndex;
-        addHighlightAnnotation(heal.cfi, h.color);
+        addHighlightAnnotation(heal.cfi, h.color, h.text);
         if (!offline) {
           // Silent by design: the writeback can 404 when the highlight was
           // deleted (tombstoned) on another device mid-heal.
@@ -1999,8 +1999,10 @@
   export function addHighlightAnnotation(
     cfiRange: string,
     color: string = "yellow",
+    expectedText?: string | null,
   ) {
     const { data, styles } = highlightAnnotationArgs(color);
+    if (expectedText) data.beepubExpectedText = expectedText;
     try {
       rendition?.annotations.highlight(cfiRange, data, () => {}, "hl", styles);
     } catch (error) {
