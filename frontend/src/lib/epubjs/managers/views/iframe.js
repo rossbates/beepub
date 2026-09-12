@@ -131,49 +131,6 @@ Highlight.prototype.filteredRanges = function () {
   return nonEmpty.filter((_r, idx) => !discard.has(idx));
 };
 
-function markRectXY(mark, rect) {
-  const svg = mark.element?.ownerSVGElement;
-  const frame = mark.range?.startContainer?.ownerDocument?.defaultView?.frameElement;
-  if (svg && frame) {
-    const svgRect = svg.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-    return {
-      x: rect.left + frameRect.left - svgRect.left,
-      y: rect.top + frameRect.top - svgRect.top,
-    };
-  }
-
-  // Fallback to marks-pane's original coordinate strategy.
-  const offset = mark.element.getBoundingClientRect();
-  const container = mark.container.getBoundingClientRect();
-  return {
-    x: rect.left - offset.left + container.left,
-    y: rect.top - offset.top + container.top,
-  };
-}
-
-Highlight.prototype.render = function () {
-  while (this.element.firstChild) {
-    this.element.removeChild(this.element.firstChild);
-  }
-
-  const docFrag = this.element.ownerDocument.createDocumentFragment();
-  const filtered = this.filteredRanges();
-
-  for (let i = 0, len = filtered.length; i < len; i++) {
-    const r = filtered[i];
-    const { x, y } = markRectXY(this, r);
-    const el = this.element.ownerDocument.createElementNS(SVG_NS, "rect");
-    el.setAttribute("x", x);
-    el.setAttribute("y", y);
-    el.setAttribute("height", r.height);
-    el.setAttribute("width", r.width);
-    docFrag.appendChild(el);
-  }
-
-  this.element.appendChild(docFrag);
-};
-
 // House extension: underline / squiggly highlight styles, routed via
 // data.beepubStyle from annotations.highlight(). marks-pane's own Underline
 // hardcodes a 1px black horizontal line — wrong for colored lines and for
@@ -213,6 +170,8 @@ class BeepubLineMark extends Highlight {
     const doc = this.element.ownerDocument;
     const docFrag = doc.createDocumentFragment();
     const filtered = this.filteredRanges();
+    const offset = this.element.getBoundingClientRect();
+    const container = this.container.getBoundingClientRect();
     const squiggly = this.data.beepubStyle === "squiggly";
     const stroke = this.attributes.stroke || "#eab308";
 
@@ -223,7 +182,8 @@ class BeepubLineMark extends Highlight {
 
     for (let i = 0, len = filtered.length; i < len; i++) {
       const r = filtered[i];
-      const { x, y } = markRectXY(this, r);
+      const x = r.left - offset.left + container.left;
+      const y = r.top - offset.top + container.top;
 
       const rect = doc.createElementNS(SVG_NS, "rect");
       rect.setAttribute("x", x);
