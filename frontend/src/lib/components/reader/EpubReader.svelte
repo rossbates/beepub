@@ -321,6 +321,15 @@
       ),
     ]);
   }
+
+  function isFragileProgressCfi(cfi?: string | null): boolean {
+    // Some EPUBs expose print page markers as empty inline anchors/spans
+    // (`<a id="page_43"/>`). epub.js may save progress against those marker
+    // nodes, then hang trying to restore them later. Highlight ranges can
+    // still legitimately cross page markers; this guard is only for saved
+    // progress restore, where percentage fallback is safer.
+    return !!cfi && /\[page_\d+\]/.test(cfi);
+  }
   let restoringProgress = false;
 
   // Position bridged from an e-reader (kosync), newer than the stored CFI.
@@ -1393,6 +1402,10 @@
         // Show the stored percentage immediately; the first relocated
         // recomputes it from the restored position.
         emitProgress();
+
+        if (isFragileProgressCfi(savedProgress.cfi)) {
+          throw new Error("Skipping fragile page-marker progress CFI");
+        }
 
         restoringProgress = true;
         if (
