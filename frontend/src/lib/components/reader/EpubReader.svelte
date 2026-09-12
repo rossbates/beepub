@@ -271,6 +271,34 @@
   let currentXpointer: string | null = null;
   let currentXpointerCfi = "";
   let lastLocation: any = null;
+
+  /**
+   * epub.js annotations accept range CFIs, but rendition.display() is much
+   * less tolerant: some valid ranges never resolve/reject and leave the
+   * reader spinning until the watchdog shows the generic "corrupt" state.
+   * For navigation, collapse a range CFI to its start point. Keep the stored
+   * highlight range untouched; this is only the jump target.
+   */
+  function displayTargetFromCfi(cfi: string): string {
+    const match = /^epubcfi\((.*)\)$/.exec(cfi);
+    if (!match) return cfi;
+
+    const body = match[1];
+    const commaAt: number[] = [];
+    let bracketDepth = 0;
+    for (let i = 0; i < body.length; i += 1) {
+      const ch = body[i];
+      if (ch === "[") bracketDepth += 1;
+      else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (ch === "," && bracketDepth === 0) commaAt.push(i);
+    }
+    if (commaAt.length < 2) return cfi;
+
+    const head = body.slice(0, commaAt[0]);
+    const start = body.slice(commaAt[0] + 1, commaAt[1]);
+    if (!head || !start.startsWith("/")) return cfi;
+    return `epubcfi(${head}${start})`;
+  }
   let restoringProgress = false;
 
   // Position bridged from an e-reader (kosync), newer than the stored CFI.
@@ -1317,7 +1345,7 @@
         }
         emitProgress();
         restoringProgress = true;
-        await rendition.display(initialCfi);
+        await rendition.display(displayTargetFromCfi(initialCfi));
         await new Promise((resolve) => requestAnimationFrame(resolve));
         restoringProgress = false;
         rendition.reportLocation?.();
@@ -1835,7 +1863,7 @@
   export function displayCfi(cfi: string) {
     restoringProgress = false;
     userNavigated = true;
-    rendition?.display(cfi)?.catch(() => {});
+    rendition?.display(displayTargetFromCfi(cfi))?.catch(() => {});
   }
 
   function startPeek(cfi: string | null, percentage: number | null) {
