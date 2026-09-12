@@ -56,11 +56,7 @@ class Annotations {
 
     views.forEach((view) => {
       if (annotation.sectionIndex === view.index) {
-        try {
-          annotation.attach(view);
-        } catch (error) {
-          console.warn("Failed to attach annotation", annotation?.cfiRange, error);
-        }
+        annotation.attach(view);
       }
     });
 
@@ -164,14 +160,7 @@ class Annotations {
       let annotations = this._annotationsBySectionIndex[sectionIndex];
       annotations.forEach((hash) => {
         let annotation = this._annotations[hash];
-        try {
-          annotation.attach(view);
-        } catch (error) {
-          // A single stale or renderer-hostile CFI must not prevent every
-          // later highlight in the section from painting. Highlights are user
-          // data; fail individually, not ontologically.
-          console.warn("Failed to attach annotation", annotation?.cfiRange, error);
-        }
+        annotation.attach(view);
       });
     }
   }

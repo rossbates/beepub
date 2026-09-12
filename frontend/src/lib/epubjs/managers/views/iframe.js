@@ -14,60 +14,6 @@ import Contents from "../../contents";
 import { EVENTS } from "../../utils/constants";
 import { Pane, Highlight, Underline } from "marks-pane";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-// Patch marks-pane: make marks fail independently. A bad range/rect from one
-// highlight should not abort Pane.render() and leave subsequent annotations
-// invisible. User data is not a monolith, despite what exception propagation
-// keeps trying to prove.
-function paneCoords(el, container) {
-  const offset = container.getBoundingClientRect();
-  const rect = el.getBoundingClientRect();
-  return {
-    top: rect.top - offset.top,
-    left: rect.left - offset.left,
-    height: el.scrollHeight,
-    width: el.scrollWidth,
-  };
-}
-
-function setPaneCoords(el, coords) {
-  el.style.setProperty("top", `${coords.top}px`, "important");
-  el.style.setProperty("left", `${coords.left}px`, "important");
-  el.style.setProperty("height", `${coords.height}px`, "important");
-  el.style.setProperty("width", `${coords.width}px`, "important");
-}
-
-Pane.prototype.addMark = function (mark) {
-  const g = this.element.ownerDocument.createElementNS(SVG_NS, "g");
-  this.element.appendChild(g);
-  mark.bind(g, this.container);
-  this.marks.push(mark);
-  try {
-    mark.render();
-  } catch (error) {
-    this.marks = this.marks.filter((m) => m !== mark);
-    try {
-      mark.unbind();
-    } catch {}
-    g.remove();
-    console.warn("Failed to render mark", error);
-    return null;
-  }
-  return mark;
-};
-
-Pane.prototype.render = function () {
-  setPaneCoords(this.element, paneCoords(this.target, this.container));
-  for (const mark of this.marks) {
-    try {
-      mark.render();
-    } catch (error) {
-      console.warn("Failed to re-render mark", error);
-    }
-  }
-};
-
 // Patch marks-pane: replace containment-only dedup with overlap-based dedup.
 // getClientRects() may return partially-overlapping aggregate rects for multi-line
 // ranges. When two rects overlap by >50% of the smaller rect's area, discard the larger.
@@ -111,6 +57,8 @@ Highlight.prototype.filteredRanges = function () {
 // column. The transparent rect keeps the whole text run clickable
 // (pointer-events: visiblePainted ignores fill="none" but hits
 // fill="transparent").
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 function beepubLinePath(vertical, squiggly, x, y, w, h) {
   if (!squiggly) {
     return vertical
@@ -828,14 +776,7 @@ class IframeView {
       { fill: "yellow", "fill-opacity": "0.3", "mix-blend-mode": "multiply" },
       styles,
     );
-    let range;
-    try {
-      range = this.contents.range(cfiRange);
-    } catch (error) {
-      console.warn("Failed to resolve highlight range", cfiRange, error);
-      return;
-    }
-    if (!range) return;
+    let range = this.contents.range(cfiRange);
 
     let emitter = () => {
       this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
@@ -850,7 +791,6 @@ class IframeView {
     const MarkClass = data.beepubStyle ? BeepubLineMark : Highlight;
     let m = new MarkClass(range, className, data, attributes);
     let h = this.pane.addMark(m);
-    if (!h) return;
 
     this.highlights[cfiRange] = {
       mark: h,
