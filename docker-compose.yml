@@ -1,59 +1,58 @@
 services:
-  # Every app service pairs a published image with a build context and
-  # pull_policy: missing — `docker compose up` pulls the prebuilt image,
-  # `docker compose up --build` builds from source instead.
   backend:
     image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    build: ./backend
     pull_policy: missing
     restart: unless-stopped
+
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+
     volumes:
-      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
-      - ${BEEPUB_BOOKS_PATH:-books_data}:/data/books
-      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers
-      - ${BEEPUB_ILLUSTRATIONS_PATH:-illustrations_data}:/data/illustrations
-      # To import an existing Calibre library, mount it read-only here and
-      # in the worker service below, then use Admin -> Calibre in the app:
-      # - /path/to/calibre:/calibre:ro
+      - app_data:/data/app
+      - ${BEEPUB_BOOKS_PATH:?Set BEEPUB_BOOKS_PATH}:/data/books
+      - ${BEEPUB_COVERS_PATH:?Set BEEPUB_COVERS_PATH}:/data/covers
+      - ${BEEPUB_ILLUSTRATIONS_PATH:?Set BEEPUB_ILLUSTRATIONS_PATH}:/data/illustrations
+
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+
 
   worker:
     image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    build: ./backend
     pull_policy: missing
     restart: unless-stopped
     mem_limit: 4g
+
     command: ["bash", "start-worker.sh"]
+
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
+
     volumes:
-      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
-      - ${BEEPUB_BOOKS_PATH:-books_data}:/data/books
-      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers
-      - ${BEEPUB_ILLUSTRATIONS_PATH:-illustrations_data}:/data/illustrations
-      # Calibre mount, same as the backend service:
-      # - /path/to/calibre:/calibre:ro
+      - app_data:/data/app
+      - ${BEEPUB_BOOKS_PATH:?Set BEEPUB_BOOKS_PATH}:/data/books
+      - ${BEEPUB_COVERS_PATH:?Set BEEPUB_COVERS_PATH}:/data/covers
+      - ${BEEPUB_ILLUSTRATIONS_PATH:?Set BEEPUB_ILLUSTRATIONS_PATH}:/data/illustrations
+
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
 
+
   beat:
     image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    build: ./backend
     pull_policy: missing
     restart: unless-stopped
+
     command:
       [
         "uv",
@@ -62,91 +61,105 @@ services:
         "-A",
         "app.celeryapp:celery",
         "beat",
-        "--loglevel=info",
+        "--loglevel=info"
       ]
+
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
+
     volumes:
-      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
+      - app_data:/data/app
+
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
 
+
   migrate:
     image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    build: ./backend
     pull_policy: missing
     restart: "no"
+
     command: ["sh", "migrate.sh"]
+
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
+
     volumes:
-      # migrate runs first, so it generates the auto SECRET_KEY when unset
-      - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
+      - app_data:/data/app
+
     depends_on:
       postgres:
         condition: service_healthy
 
+
   frontend:
     image: ghcr.io/oalieno/beepub-frontend:${BEEPUB_VERSION:-0.13.0}
-    build: ./frontend
     pull_policy: missing
     restart: unless-stopped
+
     environment:
-      ORIGIN: ${BEEPUB_ORIGIN:-http://localhost}
+      ORIGIN: ${BEEPUB_ORIGIN}
       BACKEND_URL: http://backend:8000
+
     depends_on:
       - backend
+
 
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-beepub}
       POSTGRES_USER: ${POSTGRES_USER:-beepub}
-      # Postgres is only reachable inside the compose network, so a default
-      # password is acceptable; set POSTGRES_PASSWORD to override.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beepub}
+
     volumes:
-      - ${BEEPUB_POSTGRES_DATA_PATH:-postgres_data}:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-beepub}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+
     volumes:
-      - ${BEEPUB_REDIS_DATA_PATH:-redis_data}:/data
+      - redis_data:/data
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+
   nginx:
     image: ghcr.io/oalieno/beepub-nginx:${BEEPUB_VERSION:-0.13.0}
-    build: ./nginx
     pull_policy: missing
     restart: unless-stopped
+
     expose:
       - "80"
+
     volumes:
-      - ${BEEPUB_COVERS_PATH:-covers_data}:/data/covers:ro
+      - ${BEEPUB_COVERS_PATH:?Set BEEPUB_COVERS_PATH}:/data/covers:ro
+
     depends_on:
       - backend
       - frontend
+
 
 volumes:
   postgres_data:
   redis_data:
   app_data:
-  books_data:
-  covers_data:
-  illustrations_data:
