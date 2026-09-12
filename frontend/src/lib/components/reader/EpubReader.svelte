@@ -298,8 +298,16 @@
 
     const head = body.slice(0, commaAt[0]);
     const start = body.slice(commaAt[0] + 1, commaAt[1]);
-    if (!head || !start.startsWith("/")) return cfi;
-    return `epubcfi(${head}${start})`;
+    if (!head) return cfi;
+    // epub.js-created ranges keep the text-node step in the start segment:
+    //   /path/to/p,/1:0,/1:42
+    // Apple Books often keeps the text-node step in the common path and the
+    // range endpoints are terminal-only:
+    //   /path/to/p/1,:0,:42
+    // Both are valid CFIs; both collapse to a point by appending the start.
+    if (start.startsWith("/")) return `epubcfi(${head}${start})`;
+    if (start.startsWith(":")) return `epubcfi(${head}${start})`;
+    return cfi;
   }
 
   function displayWithTimeout(target?: string, timeoutMs = 2500): Promise<void> {
