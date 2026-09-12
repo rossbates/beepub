@@ -1344,11 +1344,18 @@
           currentPercentage = savedProgress.percentage;
         }
         emitProgress();
+
+        // Do not let a fragile imported range CFI block first render. Some
+        // valid CFIs (notably Apple Books imports) render fine as annotations
+        // once the section exists, but can hang the initial rendition.display()
+        // path until the parent watchdog reports a bogus "corrupt file".
+        // Open the book first, then jump as a non-blocking visit.
         restoringProgress = true;
-        await rendition.display(displayTargetFromCfi(initialCfi));
+        await rendition.display();
         await new Promise((resolve) => requestAnimationFrame(resolve));
         restoringProgress = false;
         rendition.reportLocation?.();
+        setTimeout(() => displayCfi(initialCfi), 0);
       } else if (savedProgress?.cfi) {
         if (savedProgress.percentage != null) {
           currentPercentage = savedProgress.percentage;
