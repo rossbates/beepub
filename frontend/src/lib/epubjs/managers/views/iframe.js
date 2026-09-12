@@ -38,33 +38,6 @@ function setPaneCoords(el, coords) {
   el.style.setProperty("width", `${coords.width}px`, "important");
 }
 
-function normalizeHighlightText(text) {
-  return (text || "").replace(/[\s\u00a0]+/g, " ").trim();
-}
-
-function markGeometryLooksSane(mark, container) {
-  const rects = Array.from(mark.element?.querySelectorAll?.("rect") ?? []);
-  if (!rects.length) return false;
-  const maxW = Math.max(container.scrollWidth, container.clientWidth, 1);
-  const maxH = Math.max(container.scrollHeight, container.clientHeight, 1);
-  for (const rect of rects) {
-    const x = Number(rect.getAttribute("x"));
-    const y = Number(rect.getAttribute("y"));
-    const w = Number(rect.getAttribute("width"));
-    const h = Number(rect.getAttribute("height"));
-    if (![x, y, w, h].every(Number.isFinite)) return false;
-    if (w <= 0 || h <= 0) return false;
-    // Individual line boxes should never be larger than the whole laid-out
-    // iframe wrapper. If they are, the range geometry is pathological and the
-    // mark can poison the shared SVG pane for later highlights.
-    if (w > maxW * 1.05 || h > maxH * 1.05) return false;
-    if (x + w < -maxW || y + h < -maxH || x > maxW * 2 || y > maxH * 2) {
-      return false;
-    }
-  }
-  return true;
-}
-
 Pane.prototype.addMark = function (mark) {
   const g = this.element.ownerDocument.createElementNS(SVG_NS, "g");
   this.element.appendChild(g);
@@ -864,24 +837,11 @@ class IframeView {
     }
     if (!range) return;
 
-    const expectedText = data?.beepubExpectedText;
-    if (expectedText) {
-      const actualText = normalizeHighlightText(range.toString?.());
-      if (actualText !== normalizeHighlightText(expectedText)) {
-        console.warn("Skipping highlight with mismatched range text", cfiRange, {
-          expected: normalizeHighlightText(expectedText).slice(0, 120),
-          actual: actualText.slice(0, 120),
-        });
-        return;
-      }
-    }
-
     let emitter = () => {
       this.emit(EVENTS.VIEWS.MARK_CLICKED, cfiRange, data);
     };
 
-    data = { ...data, epubcfi: cfiRange };
-    delete data.beepubExpectedText;
+    data["epubcfi"] = cfiRange;
 
     if (!this.pane) {
       this.pane = new Pane(this.iframe, this.element);
@@ -891,11 +851,6 @@ class IframeView {
     let m = new MarkClass(range, className, data, attributes);
     let h = this.pane.addMark(m);
     if (!h) return;
-    if (!markGeometryLooksSane(h, this.element)) {
-      console.warn("Skipping highlight with pathological geometry", cfiRange);
-      this.pane.removeMark(h);
-      return;
-    }
 
     this.highlights[cfiRange] = {
       mark: h,
