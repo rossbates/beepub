@@ -1678,8 +1678,23 @@
     await saveProgress(false);
   }
 
+  function updateHighlightOverlays() {
+    if (!rendition || typeof requestAnimationFrame === "undefined") return;
+    const renderPanes = () => {
+      try {
+        for (const view of rendition.views?.() ?? []) {
+          try {
+            view?.pane?.render?.();
+          } catch {}
+        }
+      } catch {}
+    };
+    requestAnimationFrame(() => requestAnimationFrame(renderPanes));
+  }
+
   function doUpdateOverlays() {
     updateIllustrationOverlays(rendition, illustrations, onillustrationclick);
+    updateHighlightOverlays();
   }
 
   // Single source for the selection tint: the theme's ::selection rule and
@@ -1986,7 +2001,12 @@
     color: string = "yellow",
   ) {
     const { data, styles } = highlightAnnotationArgs(color);
-    rendition?.annotations.highlight(cfiRange, data, () => {}, "hl", styles);
+    try {
+      rendition?.annotations.highlight(cfiRange, data, () => {}, "hl", styles);
+    } catch (error) {
+      console.warn("Failed to add highlight annotation", cfiRange, error);
+    }
+    updateHighlightOverlays();
   }
 
   export function removeHighlightAnnotation(cfiRange: string) {
