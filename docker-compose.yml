@@ -3,7 +3,7 @@ services:
   # pull_policy: missing — `docker compose up` pulls the prebuilt image,
   # `docker compose up --build` builds from source instead.
   backend:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
     build: ./backend
     pull_policy: missing
     restart: unless-stopped
@@ -11,6 +11,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-beepub}:${POSTGRES_PASSWORD:-beepub}@postgres/${POSTGRES_DB:-beepub}
       SECRET_KEY: ${SECRET_KEY:-}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     volumes:
       - ${BEEPUB_APP_DATA_PATH:-app_data}:/data/app
       - ${BEEPUB_BOOKS_PATH:-books_data}:/data/books
@@ -26,7 +27,7 @@ services:
         condition: service_healthy
 
   worker:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
     build: ./backend
     pull_policy: missing
     restart: unless-stopped
@@ -49,7 +50,7 @@ services:
         condition: service_healthy
 
   beat:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
     build: ./backend
     pull_policy: missing
     restart: unless-stopped
@@ -75,7 +76,7 @@ services:
         condition: service_healthy
 
   migrate:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
     build: ./backend
     pull_policy: missing
     restart: "no"
@@ -91,12 +92,12 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/oalieno/beepub-frontend:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-frontend:${BEEPUB_VERSION:-0.13.0}
     build: ./frontend
     pull_policy: missing
     restart: unless-stopped
     environment:
-      ORIGIN: http://localhost:${PORT:-80}
+      ORIGIN: ${BEEPUB_ORIGIN:-http://localhost}
       BACKEND_URL: http://backend:8000
     depends_on:
       - backend
@@ -130,7 +131,7 @@ services:
       retries: 5
 
   nginx:
-    image: ghcr.io/oalieno/beepub-nginx:${BEEPUB_VERSION:-latest}
+    image: ghcr.io/oalieno/beepub-nginx:${BEEPUB_VERSION:-0.13.0}
     build: ./nginx
     pull_policy: missing
     restart: unless-stopped
