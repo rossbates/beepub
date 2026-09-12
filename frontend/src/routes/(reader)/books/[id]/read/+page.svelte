@@ -49,8 +49,11 @@
   } from "$lib/types";
 
   let bookId = $derived(page.params.id as string);
-  // Jump target passed from the book detail page (highlight click)
+  // Jump target passed from the book detail page (highlight click). Newer
+  // links prefer highlight id so the reader can load/heal anchors before
+  // jumping; raw CFI remains accepted for old/external links.
   let initialCfi = $derived(page.url.searchParams.get("cfi"));
+  let initialHighlightId = $derived(page.url.searchParams.get("highlight"));
 
   // Resolved per book id: local imports read and sync on-device, everything
   // else goes through the BeePub server pair.
@@ -897,6 +900,7 @@
           {source}
           {sync}
           {initialCfi}
+          {initialHighlightId}
           {fontFamily}
           {fontSize}
           {lineHeight}

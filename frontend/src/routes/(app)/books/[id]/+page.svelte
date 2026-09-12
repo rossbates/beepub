@@ -1001,7 +1001,7 @@
             highlights={bookHighlights}
             onselect={(hl) =>
               goto(
-                `/books/${bookId}/read?cfi=${encodeURIComponent(hl.cfi_range)}`,
+                `/books/${bookId}/read?highlight=${encodeURIComponent(hl.id)}`,
               )}
             ondelete={async (hl) => {
               if (

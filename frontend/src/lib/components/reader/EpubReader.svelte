@@ -41,6 +41,7 @@
     source,
     sync,
     initialCfi = null,
+    initialHighlightId = null,
     fontFamily = "serif",
     fontSize = 16,
     lineHeight = 1.8,
@@ -83,6 +84,7 @@
     /** Where the user's progress and highlights live. */
     sync: SyncBackend;
     initialCfi?: string | null;
+    initialHighlightId?: string | null;
     fontFamily?: string;
     fontSize?: number;
     lineHeight?: number;
@@ -1330,7 +1332,7 @@
       kosyncBaselineCfi = savedProgress?.cfi ?? null;
     }
     try {
-      if (initialCfi) {
+      if (initialCfi || initialHighlightId) {
         // Explicit jump target (e.g. a highlight clicked on the detail
         // page) takes precedence over saved progress — but it's a visit:
         // keep the way back and don't overwrite the reading position.
@@ -1355,7 +1357,7 @@
         await new Promise((resolve) => requestAnimationFrame(resolve));
         restoringProgress = false;
         rendition.reportLocation?.();
-        setTimeout(() => displayCfi(initialCfi), 0);
+        if (initialCfi) setTimeout(() => displayCfi(initialCfi), 0);
       } else if (savedProgress?.cfi) {
         if (savedProgress.percentage != null) {
           currentPercentage = savedProgress.percentage;
@@ -1463,7 +1465,14 @@
     applyAllHighlights();
     // ...then verify their anchors in the background and heal the ones the
     // file rewrite moved (best-effort; never blocks reading).
-    void healHighlights();
+    const healPromise = healHighlights();
+    void healPromise;
+    if (initialHighlightId) {
+      void healPromise.finally(() => {
+        const target = highlights.find((h) => h.id === initialHighlightId);
+        if (target) setTimeout(() => displayHighlight(target), 0);
+      });
+    }
     applyAllIllustrations();
 
     // Get book title & TOC
