@@ -1,7 +1,10 @@
 services:
   backend:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    pull_policy: missing
+    # Test branch: build the backend from this repo so API/migration changes are used.
+    # Main keeps the upstream prebuilt image for the stable Dokploy deploy.
+    image: beepub-backend:ross-sync-notes-stamp
+    build: ./backend
+    pull_policy: build
     restart: unless-stopped
 
     environment:
@@ -24,8 +27,9 @@ services:
 
 
   worker:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    pull_policy: missing
+    image: beepub-backend:ross-sync-notes-stamp
+    build: ./backend
+    pull_policy: build
     restart: unless-stopped
     mem_limit: 4g
 
@@ -49,8 +53,9 @@ services:
 
 
   beat:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    pull_policy: missing
+    image: beepub-backend:ross-sync-notes-stamp
+    build: ./backend
+    pull_policy: build
     restart: unless-stopped
 
     command:
@@ -79,8 +84,9 @@ services:
 
 
   migrate:
-    image: ghcr.io/oalieno/beepub-backend:${BEEPUB_VERSION:-0.13.0}
-    pull_policy: missing
+    image: beepub-backend:ross-sync-notes-stamp
+    build: ./backend
+    pull_policy: build
     restart: "no"
 
     command: ["sh", "migrate.sh"]
