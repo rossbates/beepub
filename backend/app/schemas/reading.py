@@ -137,12 +137,16 @@ class ReadingGoalUpdate(BaseModel):
 
 class InteractionOut(BaseModel):
     rating: float | None
+    rating_updated_at: datetime | None = None
     is_favorite: bool
+    favorite_updated_at: datetime | None = None
     reading_progress: dict | None
     reading_status: str | None
     started_at: date | None
     finished_at: date | None
+    status_updated_at: datetime | None = None
     notes: str | None
+    notes_updated_at: datetime | None = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}
@@ -196,7 +200,8 @@ class SyncInteractionIn(BaseModel):
     anchor. A group is only considered when its stamp is present — clients
     send just the groups the user actually touched on-device. Status,
     started_at and finished_at travel as one group because they always
-    change together (mirroring PUT /reading-status)."""
+    change together (mirroring PUT /reading-status). Notes are their own
+    free-form group, separate from annotation notes."""
 
     reading_status: str | None = None
     started_at: date | None = None
@@ -206,6 +211,8 @@ class SyncInteractionIn(BaseModel):
     rating_updated_at: AwareDatetime | None = None
     is_favorite: bool | None = None
     favorite_updated_at: AwareDatetime | None = None
+    notes: str | None = None
+    notes_updated_at: AwareDatetime | None = None
 
     @field_validator("reading_status")
     @classmethod
@@ -242,6 +249,8 @@ class SyncInteractionOut(BaseModel):
     rating_updated_at: datetime | None
     is_favorite: bool
     favorite_updated_at: datetime | None
+    notes: str | None
+    notes_updated_at: datetime | None
 
     model_config = {"from_attributes": True}
 

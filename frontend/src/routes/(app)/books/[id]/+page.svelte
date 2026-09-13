@@ -76,12 +76,16 @@
   ): InteractionOut {
     return {
       rating: null,
+      rating_updated_at: null,
       is_favorite: false,
+      favorite_updated_at: null,
       reading_progress: null,
       reading_status: null,
       started_at: null,
       finished_at: null,
+      status_updated_at: null,
       notes: null,
+      notes_updated_at: null,
       updated_at: "",
       ...overrides,
     };

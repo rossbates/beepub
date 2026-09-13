@@ -53,7 +53,8 @@ class UserBookInteraction(Base):
     # manually-edited group carries its own stamp. Web mutations stamp
     # server-now; sync clients supply their own (client-authority contract).
     # status_updated_at covers reading_status + started_at + finished_at,
-    # which always change together.
+    # which always change together. notes_updated_at covers the free-form
+    # book notes independently from annotation notes.
     status_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -61,6 +62,9 @@ class UserBookInteraction(Base):
         DateTime(timezone=True), nullable=True
     )
     favorite_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notes_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     updated_at: Mapped[datetime] = mapped_column(

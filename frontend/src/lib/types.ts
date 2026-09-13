@@ -310,6 +310,8 @@ export interface SyncInteractionIn {
   rating_updated_at?: string | null;
   is_favorite?: boolean | null;
   favorite_updated_at?: string | null;
+  notes?: string | null;
+  notes_updated_at?: string | null;
 }
 
 export interface SyncInteractionOut {
@@ -321,6 +323,8 @@ export interface SyncInteractionOut {
   rating_updated_at: string | null;
   is_favorite: boolean;
   favorite_updated_at: string | null;
+  notes: string | null;
+  notes_updated_at: string | null;
 }
 
 export interface BookSyncRequest {
@@ -427,12 +431,16 @@ export interface IsbnLookupOut {
 
 export interface InteractionOut {
   rating: number | null;
+  rating_updated_at: string | null;
   is_favorite: boolean;
+  favorite_updated_at: string | null;
   reading_progress: ProgressOut | null;
   reading_status: ReadingStatus | null;
   started_at: string | null;
   finished_at: string | null;
+  status_updated_at: string | null;
   notes: string | null;
+  notes_updated_at: string | null;
   updated_at: string;
 }
 

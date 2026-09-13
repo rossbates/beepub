@@ -532,6 +532,65 @@ async def test_sync_interaction_favorite_group(admin_client, book_id):
     assert response.json()["interaction"]["is_favorite"] is True
 
 
+async def test_sync_interaction_notes_group(admin_client, book_id):
+    stamp = _stamp()
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={"interaction": {"notes": "from the porch", "notes_updated_at": stamp}},
+    )
+    snapshot = response.json()["interaction"]
+    assert snapshot["notes"] == "from the porch"
+    assert datetime.fromisoformat(
+        snapshot["notes_updated_at"]
+    ) == datetime.fromisoformat(stamp)
+
+    # Older device copy loses.
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={
+            "interaction": {
+                "notes": "stale metaphysics",
+                "notes_updated_at": _stamp(-3600),
+            }
+        },
+    )
+    assert response.json()["interaction"]["notes"] == "from the porch"
+
+    # Newer device copy wins, including deliberate clear.
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={"interaction": {"notes": None, "notes_updated_at": _stamp(3600)}},
+    )
+    snapshot = response.json()["interaction"]
+    assert snapshot["notes"] is None
+    assert snapshot["notes_updated_at"] is not None
+
+
+async def test_sync_interaction_web_notes_stamp(admin_client, book_id):
+    response = await admin_client.put(
+        f"/api/books/{book_id}/notes", json={"notes": "web note"}
+    )
+    assert response.status_code == 200
+
+    snapshot = (
+        await admin_client.post(f"/api/books/{book_id}/sync", json={})
+    ).json()["interaction"]
+    assert snapshot["notes"] == "web note"
+    assert snapshot["notes_updated_at"] is not None
+
+    # A device edit made before the web edit must not erase it.
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={
+            "interaction": {
+                "notes": "old offline note",
+                "notes_updated_at": _stamp(-3600),
+            }
+        },
+    )
+    assert response.json()["interaction"]["notes"] == "web note"
+
+
 async def test_sync_interaction_validates(admin_client, book_id):
     # Unknown status → 422.
     response = await admin_client.post(
@@ -555,6 +614,16 @@ async def test_sync_interaction_validates(admin_client, book_id):
     response = await admin_client.post(
         f"/api/books/{book_id}/sync",
         json={"interaction": _sync_status(status_updated_at="2026-07-14T10:00:00")},
+    )
+    assert response.status_code == 422
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={
+            "interaction": {
+                "notes": "timeless",
+                "notes_updated_at": "2026-07-14T10:00:00",
+            }
+        },
     )
     assert response.status_code == 422
 

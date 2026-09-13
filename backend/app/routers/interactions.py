@@ -61,12 +61,16 @@ async def get_interaction(
     if not interaction:
         return InteractionOut(
             rating=None,
+            rating_updated_at=None,
             is_favorite=False,
+            favorite_updated_at=None,
             reading_progress=None,
             reading_status=None,
             started_at=None,
             finished_at=None,
+            status_updated_at=None,
             notes=None,
+            notes_updated_at=None,
             updated_at=datetime.now(UTC),
         )
     return interaction
@@ -172,6 +176,7 @@ async def update_notes(
     await _get_book_with_access(book_id, current_user, db)
     interaction = await _get_or_create_interaction(current_user.id, book_id, db)
     interaction.notes = body.notes
+    interaction.notes_updated_at = datetime.now(UTC)
     await db.commit()
     return {"status": "updated"}
 
