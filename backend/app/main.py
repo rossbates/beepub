@@ -32,6 +32,7 @@ from app.routers import (
     opds,
     search,
     series,
+    sync_client,
     tags,
     tokens,
     works,
@@ -124,6 +125,7 @@ app.include_router(search.router)
 app.include_router(jobs.router)
 app.include_router(works.router)
 app.include_router(series.router)
+app.include_router(sync_client.router)
 app.include_router(tokens.router)
 
 # MCP (read-only AI access) — bearer API tokens only, never cookies.

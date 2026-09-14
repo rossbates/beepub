@@ -343,6 +343,13 @@ export interface BookSyncResponse {
   interaction: SyncInteractionOut | null;
 }
 
+export interface SyncCapabilitiesOut {
+  endpoint: string;
+  features: string[];
+  max_mutations: number;
+  max_changes: number;
+}
+
 export type ReadingStatus =
   | "want_to_read"
   | "currently_reading"

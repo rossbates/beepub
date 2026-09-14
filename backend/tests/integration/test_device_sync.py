@@ -83,6 +83,30 @@ async def _sync_events(book_id: str, user_id: str) -> list[dict]:
         return [dict(row._mapping) for row in result.all()]
 
 
+async def test_sync_capabilities(admin_client):
+    response = await admin_client.get("/api/sync/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["endpoint"] == "/api/sync/client"
+    assert body["max_mutations"] == 500
+    assert body["max_changes"] == 1000
+    assert {
+        "cursor",
+        "catalogue",
+        "shelves",
+        "highlights",
+        "progress",
+        "interaction",
+        "notes",
+        "activity",
+    }.issubset(set(body["features"]))
+
+
+async def test_sync_capabilities_requires_auth(client):
+    response = await client.get("/api/sync/capabilities")
+    assert response.status_code == 401
+
+
 async def test_by_digest_matches_accessible_book(admin_client):
     library_id = await create_library(admin_client)
     book = await upload_epub(admin_client, library_id, title="Linked Book")
