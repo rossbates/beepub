@@ -107,6 +107,60 @@ async def test_sync_capabilities_requires_auth(client):
     assert response.status_code == 401
 
 
+async def test_sync_client_bootstrap_snapshot(admin_client, book_id):
+    response = await admin_client.post(
+        "/api/sync/client",
+        json={"client_id": "test-client", "cursor": None, "max_changes": 1000},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cursor"]
+    assert body["acks"] == []
+    assert body["changes"]
+    assert any(
+        change["type"] == "book_upsert" and change["book_id"] == book_id
+        for change in body["changes"]
+    )
+
+
+async def test_sync_client_rejects_mutations_for_now(admin_client):
+    response = await admin_client.post(
+        "/api/sync/client",
+        json={
+            "client_id": "test-client",
+            "cursor": "0",
+            "mutations": [{"id": "m1", "type": "progress", "payload": {}}],
+        },
+    )
+    assert response.status_code == 422
+
+
+async def test_sync_client_event_page(admin_client, book_id):
+    await admin_client.put(f"/api/books/{book_id}/notes", json={"notes": "cursor"})
+
+    response = await admin_client.post(
+        "/api/sync/client",
+        json={"client_id": "test-client", "cursor": "0", "max_changes": 20},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    changes = body["changes"]
+    assert any(
+        change["type"] == "interaction_update"
+        and change["book_id"] == book_id
+        and change["payload"]["notes"] == "cursor"
+        for change in changes
+    )
+    assert int(body["cursor"]) >= int(changes[-1]["revision"])
+
+
+async def test_sync_client_requires_auth(client):
+    response = await client.post(
+        "/api/sync/client", json={"client_id": "test-client", "cursor": "0"}
+    )
+    assert response.status_code == 401
+
+
 async def test_by_digest_matches_accessible_book(admin_client):
     library_id = await create_library(admin_client)
     book = await upload_epub(admin_client, library_id, title="Linked Book")
