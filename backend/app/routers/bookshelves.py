@@ -29,6 +29,11 @@ from app.services.series import (
     list_series,
     normalize_series_name,
 )
+from app.services.sync_events import (
+    bookshelf_payload,
+    record_sync_event,
+    shelf_membership_item,
+)
 
 router = APIRouter(prefix="/api/bookshelves", tags=["bookshelves"])
 
@@ -154,6 +159,17 @@ async def create_bookshelf(
 ):
     shelf = Bookshelf(**body.model_dump(), user_id=current_user.id)
     db.add(shelf)
+    await db.flush()
+    record_sync_event(
+        db,
+        operation="bookshelf_upsert",
+        entity_type="bookshelf",
+        user_id=current_user.id,
+        entity_id=shelf.id,
+        payload=bookshelf_payload(
+            shelf_id=shelf.id, name=shelf.name, description=shelf.description
+        ),
+    )
     await db.commit()
     await db.refresh(shelf)
     return shelf
@@ -178,6 +194,17 @@ async def update_bookshelf(
     shelf = await _get_owned_shelf(shelf_id, current_user, db)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(shelf, field, value)
+    await db.flush()
+    record_sync_event(
+        db,
+        operation="bookshelf_upsert",
+        entity_type="bookshelf",
+        user_id=current_user.id,
+        entity_id=shelf.id,
+        payload=bookshelf_payload(
+            shelf_id=shelf.id, name=shelf.name, description=shelf.description
+        ),
+    )
     await db.commit()
     await db.refresh(shelf)
     return shelf
@@ -190,6 +217,14 @@ async def delete_bookshelf(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     shelf = await _get_owned_shelf(shelf_id, current_user, db)
+    record_sync_event(
+        db,
+        operation="bookshelf_delete",
+        entity_type="bookshelf",
+        user_id=current_user.id,
+        entity_id=shelf.id,
+        payload=bookshelf_payload(shelf_id=shelf.id),
+    )
     await db.delete(shelf)
     await db.commit()
 
@@ -268,6 +303,8 @@ async def add_book_to_shelf(
     )
     db.add(bb)
     try:
+        await db.flush()
+        await _record_shelf_membership_event(shelf_id, current_user.id, db)
         await db.commit()
     except IntegrityError:
         # Concurrent double-add racing past the existence check above.
@@ -294,6 +331,8 @@ async def remove_book_from_shelf(
     if not bb:
         raise HTTPException(status_code=404, detail="Book not in shelf")
     await db.delete(bb)
+    await db.flush()
+    await _record_shelf_membership_event(shelf_id, current_user.id, db)
     await db.commit()
 
 
@@ -333,6 +372,8 @@ async def add_series_to_shelf(
             sort_order=sort_order,
         )
     )
+    await db.flush()
+    await _record_shelf_membership_event(shelf_id, current_user.id, db)
     await db.commit()
     return {"status": "added"}
 
@@ -357,6 +398,8 @@ async def remove_series_from_shelf(
     if not bb:
         raise HTTPException(status_code=404, detail="Series not in shelf")
     await db.delete(bb)
+    await db.flush()
+    await _record_shelf_membership_event(shelf_id, current_user.id, db)
     await db.commit()
 
 
@@ -379,8 +422,37 @@ async def reorder_shelf_books(
         bb = rows.get(book_id)
         if bb:
             bb.sort_order = i
+    await db.flush()
+    await _record_shelf_membership_event(shelf_id, current_user.id, db)
     await db.commit()
     return {"status": "reordered"}
+
+
+async def _record_shelf_membership_event(
+    shelf_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> None:
+    result = await db.execute(
+        select(BookshelfBook)
+        .where(BookshelfBook.bookshelf_id == shelf_id)
+        .order_by(BookshelfBook.sort_order.asc())
+    )
+    items = [
+        shelf_membership_item(
+            book_id=row.book_id,
+            series_key=row.series_key,
+            library_id=row.library_id,
+            sort_order=row.sort_order,
+        )
+        for row in result.scalars().all()
+    ]
+    record_sync_event(
+        db,
+        operation="bookshelf_membership_update",
+        entity_type="bookshelf_membership",
+        user_id=user_id,
+        entity_id=shelf_id,
+        payload={"bookshelf_id": shelf_id, "items": items},
+    )
 
 
 async def _get_owned_shelf(

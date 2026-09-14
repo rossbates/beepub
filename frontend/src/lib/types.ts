@@ -53,6 +53,7 @@ export interface BookOut {
   file_size: number | null; // null = physical book (no file)
   format: string;
   cover_path: string | null;
+  cover_updated_at: string | null;
   epub_title: string | null;
   epub_authors: string[] | null;
   epub_publisher: string | null;

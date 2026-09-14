@@ -38,6 +38,12 @@ from app.schemas.reading import (
     RatingUpdate,
     ReadingStatusUpdate,
 )
+from app.services.sync_events import (
+    highlight_payload,
+    interaction_payload,
+    progress_payload,
+    record_sync_event,
+)
 from app.tasks.text_extract import extract_book_text
 
 router = APIRouter(prefix="/api/books", tags=["interactions"])
@@ -91,6 +97,18 @@ async def update_rating(
     interaction = await _get_or_create_interaction(current_user.id, book_id, db)
     interaction.rating = body.rating
     interaction.rating_updated_at = datetime.now(UTC)
+    record_sync_event(
+        db,
+        operation="interaction_update",
+        entity_type="interaction",
+        user_id=current_user.id,
+        entity_id=book_id,
+        book_id=book_id,
+        payload=interaction_payload(
+            rating=interaction.rating,
+            rating_updated_at=interaction.rating_updated_at,
+        ),
+    )
     await db.commit()
     return {"status": "updated"}
 
@@ -106,10 +124,23 @@ async def update_favorite(
     interaction = await _get_or_create_interaction(current_user.id, book_id, db)
     interaction.is_favorite = body.is_favorite
     interaction.favorite_updated_at = datetime.now(UTC)
+    payload = interaction_payload(
+        is_favorite=interaction.is_favorite,
+        favorite_updated_at=interaction.favorite_updated_at,
+    )
+    record_sync_event(
+        db,
+        operation="interaction_update",
+        entity_type="interaction",
+        user_id=current_user.id,
+        entity_id=book_id,
+        book_id=book_id,
+        payload=payload,
+    )
 
     # Sync to all sibling editions in the same Work
     if book.work_id:
-        await _sync_sibling_interactions(
+        sibling_ids = await _sync_sibling_interactions(
             current_user.id,
             book.work_id,
             book_id,
@@ -119,6 +150,16 @@ async def update_favorite(
             },
             db,
         )
+        for sibling_id in sibling_ids:
+            record_sync_event(
+                db,
+                operation="interaction_update",
+                entity_type="interaction",
+                user_id=current_user.id,
+                entity_id=sibling_id,
+                book_id=sibling_id,
+                payload=payload,
+            )
 
     await db.commit()
     return {"status": "updated"}
@@ -146,10 +187,25 @@ async def update_reading_status(
     interaction.started_at = body.started_at
     interaction.finished_at = body.finished_at
     interaction.status_updated_at = datetime.now(UTC)
+    payload = interaction_payload(
+        reading_status=interaction.reading_status,
+        started_at=interaction.started_at,
+        finished_at=interaction.finished_at,
+        status_updated_at=interaction.status_updated_at,
+    )
+    record_sync_event(
+        db,
+        operation="interaction_update",
+        entity_type="interaction",
+        user_id=current_user.id,
+        entity_id=book_id,
+        book_id=book_id,
+        payload=payload,
+    )
 
     # Sync to all sibling editions in the same Work
     if book.work_id:
-        await _sync_sibling_interactions(
+        sibling_ids = await _sync_sibling_interactions(
             current_user.id,
             book.work_id,
             book_id,
@@ -161,6 +217,16 @@ async def update_reading_status(
             },
             db,
         )
+        for sibling_id in sibling_ids:
+            record_sync_event(
+                db,
+                operation="interaction_update",
+                entity_type="interaction",
+                user_id=current_user.id,
+                entity_id=sibling_id,
+                book_id=sibling_id,
+                payload=payload,
+            )
 
     await db.commit()
     return {"status": "updated"}
@@ -177,6 +243,18 @@ async def update_notes(
     interaction = await _get_or_create_interaction(current_user.id, book_id, db)
     interaction.notes = body.notes
     interaction.notes_updated_at = datetime.now(UTC)
+    record_sync_event(
+        db,
+        operation="interaction_update",
+        entity_type="interaction",
+        user_id=current_user.id,
+        entity_id=book_id,
+        book_id=book_id,
+        payload=interaction_payload(
+            notes=interaction.notes,
+            notes_updated_at=interaction.notes_updated_at,
+        ),
+    )
     await db.commit()
     return {"status": "updated"}
 
@@ -275,6 +353,15 @@ async def update_progress(
     if body.xpointer is not None:
         progress["xpointer"] = body.xpointer
     interaction.reading_progress = progress
+    record_sync_event(
+        db,
+        operation="progress_update",
+        entity_type="progress",
+        user_id=current_user.id,
+        entity_id=book_id,
+        book_id=book_id,
+        payload=progress_payload(progress),
+    )
     await db.commit()
 
     # Trigger text extraction + summary generation in the background
@@ -325,6 +412,17 @@ async def create_highlight(
     if body.id is None:
         highlight = Highlight(user_id=current_user.id, book_id=book_id, **content)
         db.add(highlight)
+        await db.flush()
+        await db.refresh(highlight)
+        record_sync_event(
+            db,
+            operation="highlight_upsert",
+            entity_type="highlight",
+            user_id=current_user.id,
+            entity_id=highlight.id,
+            book_id=book_id,
+            payload=highlight_payload(highlight),
+        )
         await db.commit()
         await db.refresh(highlight)
         return highlight
@@ -351,6 +449,15 @@ async def create_highlight(
     if highlight is None:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Highlight id conflict")
+    record_sync_event(
+        db,
+        operation="highlight_upsert",
+        entity_type="highlight",
+        user_id=current_user.id,
+        entity_id=highlight.id,
+        book_id=book_id,
+        payload=highlight_payload(highlight),
+    )
     await db.commit()
     return highlight
 
@@ -379,6 +486,17 @@ async def update_highlight(
         raise HTTPException(status_code=404, detail="Highlight not found")
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(highlight, field, value)
+    await db.flush()
+    await db.refresh(highlight)
+    record_sync_event(
+        db,
+        operation="highlight_upsert",
+        entity_type="highlight",
+        user_id=current_user.id,
+        entity_id=highlight.id,
+        book_id=book_id,
+        payload=highlight_payload(highlight),
+    )
     await db.commit()
     await db.refresh(highlight)
     return highlight
@@ -408,6 +526,17 @@ async def delete_highlight(
     # keeps the original tombstone time.
     if highlight.deleted_at is None:
         highlight.deleted_at = datetime.now(UTC)
+        await db.flush()
+        await db.refresh(highlight)
+        record_sync_event(
+            db,
+            operation="highlight_delete",
+            entity_type="highlight",
+            user_id=current_user.id,
+            entity_id=highlight.id,
+            book_id=book_id,
+            payload=highlight_payload(highlight),
+        )
         await db.commit()
 
 
@@ -436,14 +565,14 @@ async def _sync_sibling_interactions(
     exclude_book_id: uuid.UUID,
     values: dict,
     db: AsyncSession,
-) -> None:
+) -> list[uuid.UUID]:
     """Propagate interaction fields to all sibling editions in one upsert."""
     sib_result = await db.execute(
         select(Book.id).where(Book.work_id == work_id, Book.id != exclude_book_id)
     )
     sibling_ids = [row[0] for row in sib_result.all()]
     if not sibling_ids:
-        return
+        return []
     stmt = pg_insert(UserBookInteraction).values(
         [
             {"user_id": user_id, "book_id": sib_id, "is_favorite": False, **values}
@@ -456,6 +585,7 @@ async def _sync_sibling_interactions(
             set_={**values, "updated_at": func.now()},
         )
     )
+    return sibling_ids
 
 
 # --- Book Reports ---

@@ -26,6 +26,7 @@ class BookOut(BaseModel):
     file_size: int | None  # None = physical book (no file)
     format: str
     cover_path: str | None
+    cover_updated_at: datetime | None = None
     epub_title: str | None
     epub_authors: list[str] | None
     epub_publisher: str | None

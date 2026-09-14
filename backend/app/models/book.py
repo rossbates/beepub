@@ -44,6 +44,10 @@ class Book(Base, TimestampMixin):
     file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     format: Mapped[str] = mapped_column(String(10), nullable=False, default="epub")
     cover_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Cache invalidation anchor for clients that store cover bytes locally.
+    cover_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # KOReader's kosync document digest of file_path (services/partial_md5).
     partial_md5: Mapped[str | None] = mapped_column(String(32), nullable=True)
 

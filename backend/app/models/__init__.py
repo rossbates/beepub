@@ -15,6 +15,7 @@ from app.models.reading import (
     UserSeriesInteraction,
 )
 from app.models.settings import AppSetting
+from app.models.sync import SyncEvent
 from app.models.tag import BookTag, TagCategory, TagSource
 from app.models.user import User, UserRole
 from app.models.work import Work, WorkScanExclusion
@@ -36,6 +37,7 @@ __all__ = [
     "Illustration",
     "KosyncProgress",
     "AppSetting",
+    "SyncEvent",
     "BookTag",
     "TagCategory",
     "TagSource",

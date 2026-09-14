@@ -66,6 +66,23 @@ async def _user_id(admin_client, username: str) -> str:
     return next(u["id"] for u in users if u["username"] == username)
 
 
+async def _sync_events(book_id: str, user_id: str) -> list[dict]:
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    async with engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT revision, operation, entity_type, payload FROM sync_events "
+                "WHERE book_id = :book_id AND user_id = :user_id "
+                "ORDER BY revision ASC"
+            ),
+            {"book_id": book_id, "user_id": user_id},
+        )
+        return [dict(row._mapping) for row in result.all()]
+
+
 async def test_by_digest_matches_accessible_book(admin_client):
     library_id = await create_library(admin_client)
     book = await upload_epub(admin_client, library_id, title="Linked Book")
@@ -423,6 +440,38 @@ def _sync_status(status: str = "currently_reading", **overrides) -> dict:
     }
     payload.update(overrides)
     return payload
+
+
+async def test_sync_appends_events_for_client_mutations(admin_client, book_id):
+    user_id = await _user_id(admin_client, ADMIN_CREDENTIALS["username"])
+    stamp = _stamp()
+    note_stamp = _stamp(1)
+    highlight = _sync_highlight(updated_at=_stamp(2))
+    response = await admin_client.post(
+        f"/api/books/{book_id}/sync",
+        json={
+            "progress": _sync_progress(last_read_at=stamp),
+            "highlights": [highlight],
+            "interaction": {
+                "notes": "eventful",
+                "notes_updated_at": note_stamp,
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+
+    events = await _sync_events(book_id, user_id)
+    operations = [event["operation"] for event in events]
+    assert "highlight_upsert" in operations
+    assert "progress_update" in operations
+    assert "interaction_update" in operations
+    assert [event["revision"] for event in events] == sorted(
+        event["revision"] for event in events
+    )
+    interaction_events = [
+        event for event in events if event["operation"] == "interaction_update"
+    ]
+    assert interaction_events[-1]["payload"]["notes"] == "eventful"
 
 
 async def test_sync_interaction_client_wins_when_server_empty(admin_client, book_id):

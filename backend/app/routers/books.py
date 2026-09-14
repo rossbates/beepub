@@ -79,6 +79,7 @@ from app.services.storage import (
     save_cover_bytes,
     save_upload_file,
 )
+from app.services.sync_events import book_payload, record_sync_event
 from app.tasks.auto_tag import auto_tag_book
 from app.tasks.metadata import fetch_book_metadata, fetch_metadata_source
 from app.tasks.text_extract import extract_book_text
@@ -195,6 +196,7 @@ async def _ingest_epub(
         file_size=file_size,
         format="epub",
         cover_path=cover_path if cover_ok else None,
+        cover_updated_at=datetime.now(UTC) if cover_ok else None,
         partial_md5=await asyncio.to_thread(compute_partial_md5, file_path),
         added_by=user.id,
         **metadata,
@@ -219,6 +221,14 @@ async def upload_book(
 
     lib_id = await _validate_upload_library(library_id, current_user, db)
     book = await _ingest_epub(file, current_user, lib_id, db)
+    record_sync_event(
+        db,
+        operation="book_upsert",
+        entity_type="book",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id, cover_updated_at=book.cover_updated_at),
+    )
 
     await db.commit()
     await db.refresh(book)
@@ -243,6 +253,18 @@ async def upload_books_bulk(
         if not file.filename or not file.filename.lower().endswith(".epub"):
             continue
         books.append(await _ingest_epub(file, current_user, lib_id, db))
+
+    for book in books:
+        record_sync_event(
+            db,
+            operation="book_upsert",
+            entity_type="book",
+            entity_id=book.id,
+            book_id=book.id,
+            payload=book_payload(
+                book_id=book.id, cover_updated_at=book.cover_updated_at
+            ),
+        )
 
     await db.commit()
     for book in books:
@@ -277,6 +299,7 @@ async def create_physical_book(
         file_size=None,
         format="physical",
         cover_path=cover_path,
+        cover_updated_at=datetime.now(UTC) if cover_path else None,
         # "" is the established no-digest marker — non-NULL so the digest
         # backfill scan never picks the book up.
         partial_md5="",
@@ -298,6 +321,14 @@ async def create_physical_book(
     db.add(book)
     await db.flush()
     db.add(LibraryBook(library_id=lib_id, book_id=book_id, added_by=current_user.id))
+    record_sync_event(
+        db,
+        operation="book_upsert",
+        entity_type="book",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id, cover_updated_at=book.cover_updated_at),
+    )
     await db.commit()
     await db.refresh(book)
 
@@ -366,6 +397,14 @@ async def move_book_to_library(
             )
         membership.library_id = body.library_id
         membership.added_by = current_user.id
+    record_sync_event(
+        db,
+        operation="book_upsert",
+        entity_type="book",
+        entity_id=book_id,
+        book_id=book_id,
+        payload=book_payload(book_id=book_id),
+    )
     await db.commit()
     return {"status": "moved"}
 
@@ -1447,6 +1486,14 @@ async def update_book_metadata(
         )
         await recompute_popularity(db, affected)
 
+    record_sync_event(
+        db,
+        operation="book_upsert",
+        entity_type="book",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id, updated_at=book.updated_at),
+    )
     await db.commit()
     await db.refresh(book)
     return book
@@ -1471,6 +1518,14 @@ async def delete_book(
     if book.cover_path:
         paths.append(book.cover_path)
     work_id = book.work_id
+    record_sync_event(
+        db,
+        operation="book_delete",
+        entity_type="book",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id),
+    )
     await db.delete(book)
     if work_id:
         from app.services.work_library import cleanup_orphan_works
@@ -1626,6 +1681,15 @@ async def update_book_cover(
         raise HTTPException(status_code=502, detail="Cover download failed")
     os.replace(tmp, dest)
     book.cover_path = dest
+    book.cover_updated_at = datetime.now(UTC)
+    record_sync_event(
+        db,
+        operation="cover_update",
+        entity_type="cover",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id, cover_updated_at=book.cover_updated_at),
+    )
     await db.commit()
     await db.refresh(book)
     return book
@@ -1651,6 +1715,15 @@ async def upload_book_cover(
         raise HTTPException(status_code=422, detail="Not a decodable image")
     os.replace(tmp, dest)
     book.cover_path = dest
+    book.cover_updated_at = datetime.now(UTC)
+    record_sync_event(
+        db,
+        operation="cover_update",
+        entity_type="cover",
+        entity_id=book.id,
+        book_id=book.id,
+        payload=book_payload(book_id=book.id, cover_updated_at=book.cover_updated_at),
+    )
     await db.commit()
     await db.refresh(book)
     return book

@@ -54,6 +54,12 @@ from app.schemas.reading import (
     SyncInteractionOut,
     SyncProgressIn,
 )
+from app.services.sync_events import (
+    highlight_payload,
+    interaction_payload,
+    progress_payload,
+    record_sync_event,
+)
 from app.tasks.text_extract import extract_book_text
 
 router = APIRouter(prefix="/api/books", tags=["device-sync"])
@@ -110,7 +116,7 @@ async def _merge_highlights(
     user_id: uuid.UUID,
     book_id: uuid.UUID,
     incoming: list,
-) -> None:
+) -> list[Highlight]:
     """Batch LWW upsert of client highlight records.
 
     Client timestamps go into the row verbatim (a Core upsert bypasses the
@@ -146,7 +152,7 @@ async def _merge_highlights(
         if existing is None or existing["updated_at"] < item.updated_at:
             by_id[item.id] = candidate
     if not by_id:
-        return
+        return []
 
     stmt = pg_insert(Highlight).values(list(by_id.values()))
     content_cols = [
@@ -160,7 +166,7 @@ async def _merge_highlights(
         "updated_at",
         "deleted_at",
     ]
-    await db.execute(
+    result = await db.execute(
         stmt.on_conflict_do_update(
             index_elements=["id"],
             # created_at is never overwritten — identity stays stable.
@@ -168,23 +174,25 @@ async def _merge_highlights(
             where=(Highlight.user_id == user_id)
             & (Highlight.book_id == book_id)
             & (Highlight.updated_at < stmt.excluded.updated_at),
-        )
+        ).returning(Highlight)
     )
+    return list(result.scalars().all())
 
 
 def _merge_interaction_fields(
     interaction: UserBookInteraction, body: SyncInteractionIn
-) -> dict:
+) -> tuple[dict, dict]:
     """Per-group LWW for the manually-edited interaction fields.
 
     A group merges only when the client sent its stamp, and wins only when
     strictly newer than the server's (ties → server, matching the highlight
     rule). A NULL server stamp loses — it means the field was never set (or
     predates the stamps, where the migration backfilled from updated_at).
-    Returns the changed columns for sibling propagation; rating and notes stay
-    per-edition there, mirroring the web PUTs.
+    Returns the changed columns for sibling propagation plus the local event
+    payload. Rating and notes stay per-edition there, mirroring the web PUTs.
     """
     propagate: dict = {}
+    changed: dict = {}
     if body.status_updated_at is not None and (
         interaction.status_updated_at is None
         or body.status_updated_at > interaction.status_updated_at
@@ -193,18 +201,21 @@ def _merge_interaction_fields(
         interaction.started_at = body.started_at
         interaction.finished_at = body.finished_at
         interaction.status_updated_at = body.status_updated_at
-        propagate.update(
+        group = dict(
             reading_status=body.reading_status,
             started_at=body.started_at,
             finished_at=body.finished_at,
             status_updated_at=body.status_updated_at,
         )
+        propagate.update(group)
+        changed.update(group)
     if body.rating_updated_at is not None and (
         interaction.rating_updated_at is None
         or body.rating_updated_at > interaction.rating_updated_at
     ):
         interaction.rating = body.rating
         interaction.rating_updated_at = body.rating_updated_at
+        changed.update(rating=body.rating, rating_updated_at=body.rating_updated_at)
     if body.favorite_updated_at is not None and (
         interaction.favorite_updated_at is None
         or body.favorite_updated_at > interaction.favorite_updated_at
@@ -212,17 +223,20 @@ def _merge_interaction_fields(
         # The schema guarantees is_favorite accompanies the stamp.
         interaction.is_favorite = bool(body.is_favorite)
         interaction.favorite_updated_at = body.favorite_updated_at
-        propagate.update(
+        group = dict(
             is_favorite=bool(body.is_favorite),
             favorite_updated_at=body.favorite_updated_at,
         )
+        propagate.update(group)
+        changed.update(group)
     if body.notes_updated_at is not None and (
         interaction.notes_updated_at is None
         or body.notes_updated_at > interaction.notes_updated_at
     ):
         interaction.notes = body.notes
         interaction.notes_updated_at = body.notes_updated_at
-    return propagate
+        changed.update(notes=body.notes, notes_updated_at=body.notes_updated_at)
+    return propagate, changed
 
 
 def _stored_last_read(progress: dict | None) -> datetime | None:
@@ -281,8 +295,25 @@ async def sync_reading_state(
     """
     book = await _get_book_with_access(book_id, current_user, db)
 
+    changed_highlights: list[Highlight] = []
     if body.highlights:
-        await _merge_highlights(db, current_user.id, book_id, body.highlights)
+        changed_highlights = await _merge_highlights(
+            db, current_user.id, book_id, body.highlights
+        )
+        for highlight in changed_highlights:
+            record_sync_event(
+                db,
+                operation=(
+                    "highlight_delete"
+                    if highlight.deleted_at is not None
+                    else "highlight_upsert"
+                ),
+                entity_type="highlight",
+                user_id=current_user.id,
+                entity_id=highlight.id,
+                book_id=book_id,
+                payload=highlight_payload(highlight),
+            )
 
     interaction = None
     if body.progress is not None or body.interaction is not None:
@@ -295,16 +326,47 @@ async def sync_reading_state(
             interaction.reading_progress = _rebuilt_progress(
                 body.progress, interaction.reading_progress
             )
+            record_sync_event(
+                db,
+                operation="progress_update",
+                entity_type="progress",
+                user_id=current_user.id,
+                entity_id=book_id,
+                book_id=book_id,
+                payload=progress_payload(interaction.reading_progress),
+            )
             client_won = True
 
     if body.interaction is not None:
-        propagate = _merge_interaction_fields(interaction, body.interaction)
+        propagate, changed = _merge_interaction_fields(interaction, body.interaction)
+        if changed:
+            payload = interaction_payload(**changed)
+            record_sync_event(
+                db,
+                operation="interaction_update",
+                entity_type="interaction",
+                user_id=current_user.id,
+                entity_id=book_id,
+                book_id=book_id,
+                payload=payload,
+            )
         # Same propagation the web PUTs do — editions of one Work share
         # status and favorite.
         if propagate and book.work_id:
-            await _sync_sibling_interactions(
+            sibling_ids = await _sync_sibling_interactions(
                 current_user.id, book.work_id, book_id, propagate, db
             )
+            payload = interaction_payload(**propagate)
+            for sibling_id in sibling_ids:
+                record_sync_event(
+                    db,
+                    operation="interaction_update",
+                    entity_type="interaction",
+                    user_id=current_user.id,
+                    entity_id=sibling_id,
+                    book_id=sibling_id,
+                    payload=payload,
+                )
 
     await db.commit()
 
